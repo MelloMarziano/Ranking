@@ -1747,3 +1747,28 @@ button:disabled {
   border-color: var(--cobalt);
   color: var(--cobalt);
 }
+
+.live-pill {
+  align-items: center;
+  color: #7ee2b8;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 5px;
+  margin-left: 10px;
+}
+
+.live-pill i {
+  animation: live-pulse 2s ease-in-out infinite;
+  background: #3ddc97;
+  border-radius: 999px;
+  display: inline-block;
+  height: 7px;
+  width: 7px;
+}
+
+@keyframes live-pulse {
+  50% {
+    box-shadow: 0 0 0 4px rgba(61, 220, 151, 0.2);
+  }
+}

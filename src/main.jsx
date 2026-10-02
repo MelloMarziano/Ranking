@@ -30,9 +30,13 @@ import { getUsernameFromEmail, signInAdmin, signOutAdmin, watchAdminSession } fr
 import { employees as seedEmployees, questions as seedQuestions } from "./data";
 import {
   getEmployees,
-  getEvaluations,
   getQuestions,
   hasLegacyEmployeeId,
+  seedEmployeesIfEmpty,
+  seedQuestionsIfEmpty,
+  subscribeEmployees,
+  subscribeEvaluations,
+  subscribeQuestions,
   migrateEmployeeToGeneratedId,
   saveEmployee,
   saveEvaluation,
@@ -146,24 +150,56 @@ function useDashboardData({ admin = false } = {}) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const refresh = async () => {
-    const [employeeItems, questionItems, evaluationItems] = await Promise.all([
-      getEmployees({ seed: admin }),
-      getQuestions({ seed: admin }),
-      admin ? getEvaluations() : [],
-    ]);
+  // Los formularios del admin llaman a refresh() al guardar; con tiempo real los datos ya llegan solos.
+  const refresh = async () => {};
 
-    setEmployees(employeeItems);
-    setQuestions(questionItems);
-    setEvaluations(evaluationItems);
-    setError("");
-  };
+  // Admin: tiempo real. Cualquier evaluación, empleado o pregunta nueva aparece sin recargar.
+  useEffect(() => {
+    if (!admin) return undefined;
+
+    let mounted = true;
+    const unsubscribers = [];
+    const pending = new Set(["employees", "questions", "evaluations"]);
+
+    const receive = (key, setter) => (items) => {
+      if (!mounted) return;
+      setter(items);
+      setError("");
+      pending.delete(key);
+      if (pending.size === 0) setLoading(false);
+    };
+
+    const fail = (dataError) => {
+      console.error(dataError);
+      if (!mounted) return;
+      setError("Se perdió la conexión en tiempo real con Firebase. Recarga la página.");
+      setLoading(false);
+    };
+
+    Promise.all([seedEmployeesIfEmpty(), seedQuestionsIfEmpty()])
+      .catch((seedError) => console.error(seedError))
+      .finally(() => {
+        if (!mounted) return;
+        unsubscribers.push(
+          subscribeEmployees(receive("employees", setEmployees), fail),
+          subscribeQuestions(receive("questions", setQuestions), fail),
+          subscribeEvaluations(receive("evaluations", setEvaluations), fail),
+        );
+      });
+
+    return () => {
+      mounted = false;
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [admin]);
 
   useEffect(() => {
+    if (admin) return undefined;
+
     let mounted = true;
 
     // La encuesta es pública: solo lee empleados y preguntas. Las evaluaciones son solo para el admin.
-    Promise.all([getEmployees({ seed: admin }), getQuestions({ seed: admin }), admin ? getEvaluations() : []])
+    Promise.all([getEmployees(), getQuestions(), []])
       .then(([employeeItems, questionItems, evaluationItems]) => {
         if (!mounted) return;
         setEmployees(employeeItems);
@@ -594,7 +630,14 @@ function AdminDashboard({ user }) {
           <Logo />
           <div className="topbar-title">
             <strong>Arturo 2 Hookah</strong>
-            <span>Panel de desempeño</span>
+            <span>
+              Panel de desempeño
+              {!loading && !error && (
+                <span className="live-pill" title="Los datos se actualizan solos">
+                  <i aria-hidden="true" /> En vivo
+                </span>
+              )}
+            </span>
           </div>
           <button className="date-filter" onClick={() => setDateModalOpen(true)} type="button">
             <CalendarDays size={18} />

@@ -4,6 +4,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
@@ -202,4 +203,25 @@ export async function migrateEmployeeToGeneratedId(employeeId) {
   await finalBatch.commit();
 
   return newRef.id;
+}
+
+// Suscripciones en tiempo real para el panel admin. Cada una devuelve la función para cancelarla.
+function subscribe(source, onData, onError) {
+  return onSnapshot(
+    source,
+    (snapshot) => onData(snapshot.docs.map((item) => ({ ...item.data(), id: item.id }))),
+    onError,
+  );
+}
+
+export function subscribeEmployees(onData, onError) {
+  return subscribe(query(employeesCollection, orderBy("order", "asc")), onData, onError);
+}
+
+export function subscribeQuestions(onData, onError) {
+  return subscribe(query(questionsCollection, orderBy("order", "asc")), onData, onError);
+}
+
+export function subscribeEvaluations(onData, onError) {
+  return subscribe(evaluationsCollection, onData, onError);
 }
