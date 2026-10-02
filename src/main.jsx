@@ -32,6 +32,8 @@ import {
   getEmployees,
   getEvaluations,
   getQuestions,
+  hasLegacyEmployeeId,
+  migrateEmployeeToGeneratedId,
   saveEmployee,
   saveEvaluation,
   saveQuestion,
@@ -606,6 +608,8 @@ function AdminDashboard({ user }) {
           <aside className="side-stack">
             <ManageEmployees
               employees={employees}
+              loading={loading}
+              onMigrated={refresh}
               onCreate={() => setEmployeeModal({ mode: "create" })}
               onEdit={(employee) => setEmployeeModal({ mode: "edit", employee })}
             />
@@ -777,7 +781,45 @@ function CopyLinkButton({ employee }) {
   );
 }
 
-function ManageEmployees({ employees, onCreate, onEdit }) {
+function LegacyIdNotice({ employees, onMigrated }) {
+  const [migrating, setMigrating] = useState(false);
+  const [error, setError] = useState("");
+
+  const migrate = async () => {
+    try {
+      setMigrating(true);
+      setError("");
+      for (const employee of employees) {
+        await migrateEmployeeToGeneratedId(employee.id);
+      }
+      await onMigrated();
+    } catch (migrationError) {
+      console.error(migrationError);
+      setError("No se pudieron cambiar todos los enlaces. Vuelve a intentarlo; las evaluaciones no se pierden.");
+      await onMigrated().catch(() => {});
+    } finally {
+      setMigrating(false);
+    }
+  };
+
+  return (
+    <div className="legacy-notice">
+      <p>
+        {employees.length === 1 ? "1 empleado tiene" : `${employees.length} empleados tienen`} un enlace con su nombre,
+        como <code>/encuesta/{employees[0].id}</code>. Cámbialos a un ID antes de grabar las etiquetas NFC. Sus
+        evaluaciones se conservan.
+      </p>
+      {error && <p className="form-error">{error}</p>}
+      <button className="button button-primary button-small" disabled={migrating} onClick={migrate} type="button">
+        {migrating ? "Cambiando…" : "Cambiar enlaces a ID"}
+      </button>
+    </div>
+  );
+}
+
+function ManageEmployees({ employees, loading, onCreate, onEdit, onMigrated }) {
+  const legacyEmployees = loading ? [] : employees.filter(hasLegacyEmployeeId);
+
   return (
     <section className="panel">
       <header className="panel-head">
@@ -788,6 +830,7 @@ function ManageEmployees({ employees, onCreate, onEdit }) {
           <Plus size={16} /> Nuevo
         </button>
       </header>
+      {legacyEmployees.length > 0 && <LegacyIdNotice employees={legacyEmployees} onMigrated={onMigrated} />}
       <div className="list">
         {employees.length === 0 && <div className="empty-state">Aún no hay empleados. Crea el primero.</div>}
         {employees.map((employee) => (

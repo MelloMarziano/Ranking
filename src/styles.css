@@ -1689,3 +1689,29 @@ button:disabled {
   min-height: 70px;
   padding: 10px 12px;
 }
+
+.legacy-notice {
+  background: var(--marigold-soft);
+  border-bottom: 1px solid #f5d98a;
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  padding: 14px 20px;
+}
+
+.legacy-notice p {
+  color: #6d4c00;
+  font-size: 13px;
+  margin: 0;
+}
+
+.legacy-notice code {
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 1px 4px;
+}
+
+.legacy-notice .form-error {
+  margin: 0;
+}
