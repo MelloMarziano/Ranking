@@ -1332,9 +1332,12 @@ button:disabled {
 
   .survey-hero {
     align-items: flex-start;
+    height: 100vh;
     justify-content: center;
     padding: 64px clamp(40px, 6vw, 96px);
+    position: sticky;
     text-align: left;
+    top: 0;
   }
 
   .brand-tile img {
