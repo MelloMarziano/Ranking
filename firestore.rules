@@ -1,0 +1,36 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Solo los correos de esta lista pueden administrar el panel.
+    // Si cambias el usuario en Firebase Authentication, actualiza esta lista.
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email in ['arturo@arturo2hookah.app'];
+    }
+
+    // La encuesta pública necesita leer empleados y preguntas.
+    match /employees/{employeeId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /questions/{questionId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Cualquiera puede enviar una evaluación válida; solo el admin puede verlas o cambiarlas.
+    match /evaluations/{evaluationId} {
+      allow read, update, delete: if isAdmin();
+      allow create: if request.resource.data.keys().hasOnly(
+          ['employeeId', 'employeeName', 'employeeRole', 'answers', 'questions', 'score', 'createdAt'])
+        && request.resource.data.employeeId is string
+        && exists(/databases/$(database)/documents/employees/$(request.resource.data.employeeId))
+        && request.resource.data.score is number
+        && request.resource.data.score >= 1
+        && request.resource.data.score <= 5
+        && request.resource.data.createdAt == request.time;
+    }
+  }
+}
