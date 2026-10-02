@@ -185,10 +185,14 @@ function useDashboardData({ admin = false } = {}) {
   };
 }
 
+// La app puede vivir en una subcarpeta (ej. GitHub Pages: /Ranking/), así que las rutas parten de BASE_URL.
+const appPath = (path = "") => `${import.meta.env.BASE_URL}${path}`;
+const LOGO_URL = appPath("assets/arturo-hookah-logo-cropped.png");
+
 function Logo({ className = "brand" }) {
   return (
-    <a className={className} href="/admin" aria-label="Ir al panel admin">
-      <img src="/assets/arturo-hookah-logo-cropped.png" alt="Arturo Hookah" />
+    <a className={className} href={appPath("admin")} aria-label="Ir al panel admin">
+      <img src={LOGO_URL} alt="Arturo Hookah" />
     </a>
   );
 }
@@ -1116,7 +1120,7 @@ function LoginScreen() {
       <form className="login-card" onSubmit={submit}>
         <div className="login-brand">
           <span className="brand brand-tile">
-            <img src="/assets/arturo-hookah-logo-cropped.png" alt="Arturo Hookah" />
+            <img src={LOGO_URL} alt="Arturo Hookah" />
           </span>
           <h1>Panel de desempeño</h1>
           <p>Entra para ver el ranking y administrar el equipo.</p>
@@ -1179,7 +1183,7 @@ function AdminGate() {
 }
 
 function App() {
-  const route = window.location.pathname;
+  const route = window.location.pathname.slice(import.meta.env.BASE_URL.length - 1);
 
   if (route.startsWith("/encuesta")) {
     return <PublicSurvey />;

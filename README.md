@@ -23,3 +23,13 @@ El login usa Firebase Authentication con correo y contraseña. En la pantalla de
 3. Publica las reglas de `firestore.rules` (Firestore → Reglas, o `firebase deploy --only firestore:rules`).
 
 La contraseña se cambia desde Authentication → Users. Si cambias el correo del admin, actualiza también la lista de `isAdmin()` en `firestore.rules`.
+
+## Publicación automática
+
+Cada push a `main` ejecuta `.github/workflows/deploy.yml`, que compila la app y la publica en GitHub Pages.
+En el repo, **Settings → Pages → Source** debe estar en **GitHub Actions**.
+
+- Encuesta: https://mellomarziano.github.io/Ranking/encuesta
+- Panel admin: https://mellomarziano.github.io/Ranking/admin
+
+Las reglas de `firestore.rules` no se publican solas: cuando cambien, pégalas en Firestore → Reglas o usa `firebase deploy --only firestore:rules`.
