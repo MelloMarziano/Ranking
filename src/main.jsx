@@ -10,6 +10,7 @@ import {
   Eye,
   EyeOff,
   GripVertical,
+  Link2,
   LogIn,
   LogOut,
   MessageCircle,
@@ -748,6 +749,34 @@ function RankingPanel({ ranking, loading }) {
   );
 }
 
+function CopyLinkButton({ employee }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    const url = getSurveyUrl(employee.id);
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      window.prompt(`Copia el enlace de ${employee.name}:`, url);
+      return;
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <button
+      aria-label={`Copiar enlace de la encuesta de ${employee.name}`}
+      className={copied ? "icon-button copied" : "icon-button"}
+      onClick={copy}
+      title={copied ? "Enlace copiado" : "Copiar enlace directo a su encuesta"}
+      type="button"
+    >
+      {copied ? <Check size={16} /> : <Link2 size={16} />}
+    </button>
+  );
+}
+
 function ManageEmployees({ employees, onCreate, onEdit }) {
   return (
     <section className="panel">
@@ -770,6 +799,7 @@ function ManageEmployees({ employees, onCreate, onEdit }) {
             </div>
             <span className={employee.status === "Activo" ? "status" : "status status-off"}>{employee.status}</span>
             <div className="row-actions">
+              <CopyLinkButton employee={employee} />
               <button
                 aria-label={`Editar ${employee.name}`}
                 className="icon-button"
@@ -884,12 +914,30 @@ function saveTodayVote(vote) {
   }
 }
 
+// Enlace directo a un empleado: /encuesta/<id>. Sirve para etiquetas NFC o códigos QR por empleado.
+function getSurveyUrl(employeeId) {
+  return `${window.location.origin}${appPath(`encuesta/${encodeURIComponent(employeeId)}`)}`;
+}
+
+function getEmployeeIdFromPath() {
+  const route = window.location.pathname.slice(import.meta.env.BASE_URL.length - 1);
+  const match = route.match(/^\/encuesta\/([^/]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function setSurveyPath(employeeId, { replace = false } = {}) {
+  const path = employeeId ? appPath(`encuesta/${encodeURIComponent(employeeId)}`) : appPath("encuesta");
+  if (window.location.pathname === path) return;
+  window.history[replace ? "replaceState" : "pushState"]({}, "", path);
+}
+
 function PublicSurvey() {
   const { employees, questions, loading, error } = useDashboardData();
-  const [selectedEmployee, setSelectedEmployee] = useState(seedEmployees[0].id);
+  const [selectedEmployee, setSelectedEmployee] = useState(getEmployeeIdFromPath);
   const [todayVote, setTodayVote] = useState(getTodayVote);
   const [closeBlocked, setCloseBlocked] = useState(false);
-  const [step, setStep] = useState(() => (todayVote ? 3 : 1));
+  const [step, setStep] = useState(() => (todayVote ? 3 : selectedEmployee ? 2 : 1));
+  const [linkNotFound, setLinkNotFound] = useState(false);
   const [answers, setAnswers] = useState({});
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -902,8 +950,41 @@ function PublicSurvey() {
     );
   }, [activeQuestions]);
 
-  const employee = employees.find((item) => item.id === selectedEmployee) ?? employees[0] ?? seedEmployees[0];
-  const canSubmit = activeQuestions.length > 0 && Object.values(answers).every(Boolean);
+  const employee = employees.find((item) => item.id === selectedEmployee) ?? null;
+  const canSubmit = Boolean(employee) && activeQuestions.length > 0 && Object.values(answers).every(Boolean);
+
+  // Si el enlace trae un empleado que no existe (borrado o mal copiado), vuelve a la lista.
+  useEffect(() => {
+    if (loading || step !== 2 || employee) return;
+    setLinkNotFound(Boolean(selectedEmployee));
+    setSelectedEmployee(null);
+    setSurveyPath(null, { replace: true });
+    setStep(1);
+  }, [loading, step, employee, selectedEmployee]);
+
+  // Botón "atrás" del navegador: sincroniza el paso con la ruta.
+  useEffect(() => {
+    const handlePopState = () => {
+      if (getTodayVote()) return;
+      const employeeId = getEmployeeIdFromPath();
+      setSelectedEmployee(employeeId);
+      setStep(employeeId ? 2 : 1);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const chooseEmployee = (employeeId) => {
+    setLinkNotFound(false);
+    setSelectedEmployee(employeeId);
+    setSurveyPath(employeeId);
+    setStep(2);
+  };
+
+  const backToEmployees = () => {
+    setSurveyPath(null);
+    setStep(1);
+  };
   const answeredCount = Object.values(answers).filter(Boolean).length;
 
   const score = useMemo(() => {
@@ -966,6 +1047,9 @@ function PublicSurvey() {
               <h2>¿Quién te atendió hoy?</h2>
               <p>Toca el nombre de la persona que te ayudó.</p>
             </header>
+            {linkNotFound && (
+              <p className="form-error">No encontramos al empleado de ese enlace. Elige de la lista quién te atendió.</p>
+            )}
             <div className="employee-options">
               {loading && <div className="loading-card">Cargando empleados…</div>}
               {!loading &&
@@ -973,10 +1057,7 @@ function PublicSurvey() {
                   <button
                     className={selectedEmployee === item.id ? "employee-option selected" : "employee-option"}
                     key={item.id}
-                    onClick={() => {
-                      setSelectedEmployee(item.id);
-                      setStep(2);
-                    }}
+                    onClick={() => chooseEmployee(item.id)}
                     type="button"
                   >
                     <Avatar name={item.name} size={48} src={item.avatar} />
@@ -994,22 +1075,26 @@ function PublicSurvey() {
         {step === 2 && (
           <section className="survey-step rating-step">
             <div className="step-nav">
-              <button aria-label="Volver" className="back-button" onClick={() => setStep(1)} type="button">
+              <button aria-label="Volver" className="back-button" onClick={backToEmployees} type="button">
                 <ArrowLeft size={20} />
               </button>
               <StepProgress step={2} />
             </div>
 
-            <div className="selected-employee">
-              <Avatar name={employee.name} size={48} src={employee.avatar} />
-              <div>
-                <span>Te atendió</span>
-                <strong>{employee.name}</strong>
+            {employee ? (
+              <div className="selected-employee">
+                <Avatar name={employee.name} size={48} src={employee.avatar} />
+                <div>
+                  <span>Te atendió</span>
+                  <strong>{employee.name}</strong>
+                </div>
+                <button className="link-button" onClick={backToEmployees} type="button">
+                  Cambiar
+                </button>
               </div>
-              <button className="link-button" onClick={() => setStep(1)} type="button">
-                Cambiar
-              </button>
-            </div>
+            ) : (
+              <div className="selected-employee loading-card">Cargando empleado…</div>
+            )}
 
             <header className="step-title">
               <h2>¿Cómo fue su atención?</h2>

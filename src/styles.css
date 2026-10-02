@@ -1678,3 +1678,14 @@ button:disabled {
   padding: 14px 16px;
   width: 100%;
 }
+
+.icon-button.copied {
+  background: var(--mint-soft);
+  color: var(--mint);
+}
+
+.selected-employee.loading-card {
+  justify-content: center;
+  min-height: 70px;
+  padding: 10px 12px;
+}
