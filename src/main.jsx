@@ -70,8 +70,27 @@ function buildRanking(employees, evaluations) {
     .sort((first, second) => second.score - first.score || second.reviews - first.reviews || first.name.localeCompare(second.name));
 }
 
+// Fecha local (no UTC): con toISOString() las noches en RD ya contaban como el día siguiente.
 function toDateInputValue(date) {
-  return date.toISOString().slice(0, 10);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function getCurrentMonthRange() {
+  const now = new Date();
+  return {
+    start: toDateInputValue(new Date(now.getFullYear(), now.getMonth(), 1)),
+    end: toDateInputValue(now),
+  };
+}
+
+function getLastDaysRange(days) {
+  const now = new Date();
+  return {
+    start: toDateInputValue(new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1))),
+    end: toDateInputValue(now),
+  };
 }
 
 function getPreviousMonthRange() {
@@ -495,9 +514,33 @@ function DateRangeForm({ initialRange, onApply, onClose }) {
     onClose();
   };
 
+  const presets = [
+    { label: "Hoy", range: getLastDaysRange(1) },
+    { label: "Últimos 7 días", range: getLastDaysRange(7) },
+    { label: "Este mes", range: getCurrentMonthRange() },
+    { label: "Mes pasado", range: getPreviousMonthRange() },
+  ];
+
   return (
     <form className="modal-form" onSubmit={submit}>
       {error && <p className="form-error">{error}</p>}
+      <div className="date-presets">
+        {presets.map((preset) => (
+          <button
+            className={
+              preset.range.start === range.start && preset.range.end === range.end ? "date-preset active" : "date-preset"
+            }
+            key={preset.label}
+            onClick={() => {
+              onApply(preset.range);
+              onClose();
+            }}
+            type="button"
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
       <div className="field-row">
         <label>
           Desde
@@ -533,7 +576,7 @@ function AdminDashboard({ user }) {
   const [employeeModal, setEmployeeModal] = useState(null);
   const [questionModal, setQuestionModal] = useState(null);
   const [dateModalOpen, setDateModalOpen] = useState(false);
-  const [dateRange, setDateRange] = useState(getPreviousMonthRange);
+  const [dateRange, setDateRange] = useState(getCurrentMonthRange);
   const filteredEvaluations = useMemo(() => filterEvaluationsByDate(evaluations, dateRange), [evaluations, dateRange]);
   const ranking = useMemo(() => buildRanking(employees, filteredEvaluations), [employees, filteredEvaluations]);
   const totalReviews = filteredEvaluations.length;

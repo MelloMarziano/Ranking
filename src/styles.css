@@ -1718,3 +1718,32 @@ button:disabled {
 .legacy-notice .form-error {
   margin: 0;
 }
+
+.date-presets {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.date-preset {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  min-height: 40px;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.date-preset:hover {
+  border-color: var(--cobalt);
+}
+
+.date-preset.active {
+  background: var(--cobalt-soft);
+  border-color: var(--cobalt);
+  color: var(--cobalt);
+}
