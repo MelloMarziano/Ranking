@@ -888,6 +888,7 @@ function PublicSurvey() {
   const { employees, questions, loading, error } = useDashboardData();
   const [selectedEmployee, setSelectedEmployee] = useState(seedEmployees[0].id);
   const [todayVote, setTodayVote] = useState(getTodayVote);
+  const [closeBlocked, setCloseBlocked] = useState(false);
   const [step, setStep] = useState(() => (todayVote ? 3 : 1));
   const [answers, setAnswers] = useState({});
   const [submitted, setSubmitted] = useState(false);
@@ -936,6 +937,13 @@ function PublicSurvey() {
       setSubmitted(false);
       setSubmitError("No se pudo enviar tu evaluación. Revisa tu conexión e inténtalo de nuevo.");
     }
+  };
+
+  // El navegador solo deja cerrar pestañas abiertas por un script. Si se abrió desde un QR o un enlace,
+  // window.close() no hace nada y se le indica al cliente que la cierre él.
+  const closeSurvey = () => {
+    window.close();
+    window.setTimeout(() => setCloseBlocked(true), 300);
   };
 
   const questionIcons = [Smile, MessageCircle, Clock, ShoppingBag];
@@ -1066,6 +1074,15 @@ function PublicSurvey() {
               <span>{todayVote.score.toFixed(1)} de 5</span>
             </div>
             <p className="thank-you-note">Puedes volver a evaluar en tu próxima visita.</p>
+            {closeBlocked ? (
+              <p className="close-hint" role="status">
+                Listo. Ya puedes cerrar esta pestaña desde tu navegador.
+              </p>
+            ) : (
+              <button className="button button-secondary button-large close-button" onClick={closeSurvey} type="button">
+                <X size={18} /> Cerrar
+              </button>
+            )}
           </section>
         )}
       </form>

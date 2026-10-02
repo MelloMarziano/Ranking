@@ -1662,3 +1662,19 @@ button:disabled {
     display: none;
   }
 }
+
+.thank-you-step .close-button {
+  margin-top: 28px;
+}
+
+.thank-you-step .close-hint {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--ink-2);
+  font-size: 14px;
+  margin: 28px 0 0;
+  max-width: none;
+  padding: 14px 16px;
+  width: 100%;
+}
