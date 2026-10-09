@@ -41,24 +41,87 @@ export const questions = [
     id: "amabilidad",
     title: "Amabilidad",
     description: "Fue cordial y respetuoso",
+    team: "ventas",
     active: true,
   },
   {
     id: "conocimiento",
     title: "Conocimiento",
     description: "Te asesoro bien en los productos",
+    team: "ventas",
     active: true,
   },
   {
     id: "rapidez",
     title: "Rapidez",
     description: "Te atendio en un buen tiempo",
+    team: "ventas",
     active: true,
   },
   {
     id: "experiencia",
     title: "Experiencia general",
     description: "¿Como calificarias su atencion?",
+    team: "ventas",
+    active: true,
+  },
+  {
+    id: "delivery-puntualidad",
+    title: "Puntualidad",
+    description: "Llegó en el tiempo que te dijeron",
+    team: "delivery",
+    active: true,
+  },
+  {
+    id: "delivery-pedido",
+    title: "Pedido completo",
+    description: "Llegó todo lo que pediste y en buen estado",
+    team: "delivery",
+    active: true,
+  },
+  {
+    id: "delivery-trato",
+    title: "Trato",
+    description: "Fue amable y respetuoso al entregar",
+    team: "delivery",
+    active: true,
+  },
+  {
+    id: "delivery-presentacion",
+    title: "Presentación",
+    description: "Llegó bien presentado y con buena actitud",
+    team: "delivery",
+    active: true,
+  },
+  {
+    id: "delivery-experiencia",
+    title: "Experiencia general",
+    description: "¿Cómo calificarías la entrega?",
+    team: "delivery",
     active: true,
   },
 ];
+
+// Tipos de puesto. Cada tipo tiene su propio ranking y sus propias preguntas.
+// Para agregar otro (ej. Mesero), añade una entrada aquí.
+export const teams = [
+  { id: "ventas", label: "Vendedor", plural: "Vendedores" },
+  { id: "delivery", label: "Repartidor", plural: "Repartidores" },
+  { id: "seguridad", label: "Seguridad", plural: "Seguridad" },
+];
+
+export const DEFAULT_TEAM = "ventas";
+
+// Empleados y preguntas creados antes de existir los tipos no tienen `team`:
+// se deduce del puesto escrito, y si no se reconoce, son de ventas.
+export function getTeamId(item) {
+  if (teams.some((team) => team.id === item?.team)) return item.team;
+  const role = item?.role ?? "";
+  if (/repart|delivery|motor/i.test(role)) return "delivery";
+  if (/segur|vigil/i.test(role)) return "seguridad";
+  return DEFAULT_TEAM;
+}
+
+export function getTeam(teamId) {
+  return teams.find((team) => team.id === teamId) ?? teams[0];
+}

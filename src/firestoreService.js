@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -14,7 +15,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import { employees as seedEmployees, questions as seedQuestions } from "./data";
+import { employees as seedEmployees, getTeamId, questions as seedQuestions } from "./data";
 
 const questionsCollection = collection(db, "questions");
 const evaluationsCollection = collection(db, "evaluations");
@@ -37,6 +38,41 @@ export async function seedQuestionsIfEmpty() {
       }),
     ),
   );
+}
+
+// Agrega las preguntas iniciales de un tipo de puesto (ej. repartidores) si ese tipo aún no tiene ninguna.
+// Corre una sola vez por navegador: si después el admin borra todas, no vuelven a aparecer.
+const TEAM_SEED_KEY = "arturo-team-questions-seeded";
+
+export async function seedMissingTeamQuestions() {
+  try {
+    if (window.localStorage.getItem(TEAM_SEED_KEY)) return;
+  } catch {
+    // Sin almacenamiento disponible: se revisa igual, solo agrega si el tipo está vacío.
+  }
+
+  const snapshot = await getDocs(questionsCollection);
+  const existing = snapshot.docs.map((questionDoc) => questionDoc.data());
+  const teamsWithQuestions = new Set(existing.map(getTeamId));
+  const lastOrder = existing.reduce((max, question) => Math.max(max, question.order ?? 0), 0);
+  const missing = seedQuestions.filter((question) => !teamsWithQuestions.has(question.team));
+
+  await Promise.all(
+    missing.map((question, index) =>
+      setDoc(doc(db, "questions", question.id), {
+        ...question,
+        order: lastOrder + index + 1,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }),
+    ),
+  );
+
+  try {
+    window.localStorage.setItem(TEAM_SEED_KEY, "1");
+  } catch {
+    // Ignorar: sin almacenamiento solo se pierde el recordatorio.
+  }
 }
 
 export async function getQuestions({ seed = false } = {}) {
@@ -105,6 +141,7 @@ export async function saveEmployee(employee) {
   const payload = {
     name: employee.name.trim(),
     role: employee.role.trim(),
+    team: employee.team,
     avatar: employee.avatar.trim(),
     status: employee.status,
     order: employee.order,
@@ -124,10 +161,20 @@ export async function saveEmployee(employee) {
   return newEmployeeRef.id;
 }
 
+// Las evaluaciones del empleado se conservan en la base de datos, pero ya no salen en el ranking.
+export async function deleteEmployee(id) {
+  await deleteDoc(doc(db, "employees", id));
+}
+
+export async function deleteQuestion(id) {
+  await deleteDoc(doc(db, "questions", id));
+}
+
 export async function saveQuestion(question) {
   const payload = {
     title: question.title.trim(),
     description: question.description.trim(),
+    team: question.team,
     active: question.active,
     order: question.order,
     updatedAt: serverTimestamp(),

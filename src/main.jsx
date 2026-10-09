@@ -14,8 +14,10 @@ import {
   LogIn,
   LogOut,
   MessageCircle,
+  Package,
   Pencil,
   Plus,
+  ShieldCheck,
   ShoppingBag,
   Smile,
   Star,
@@ -25,14 +27,18 @@ import {
   Users,
   X,
 } from "lucide-react";
+import Swal from "sweetalert2";
 import { hasFirebaseConfig } from "./firebase";
 import { getUsernameFromEmail, signInAdmin, signOutAdmin, watchAdminSession } from "./authService";
-import { employees as seedEmployees, questions as seedQuestions } from "./data";
+import { DEFAULT_TEAM, employees as seedEmployees, getTeam, getTeamId, questions as seedQuestions, teams } from "./data";
 import {
   getEmployees,
   getQuestions,
   hasLegacyEmployeeId,
+  deleteEmployee,
+  deleteQuestion,
   seedEmployeesIfEmpty,
+  seedMissingTeamQuestions,
   seedQuestionsIfEmpty,
   subscribeEmployees,
   subscribeEvaluations,
@@ -176,7 +182,7 @@ function useDashboardData({ admin = false } = {}) {
       setLoading(false);
     };
 
-    Promise.all([seedEmployeesIfEmpty(), seedQuestionsIfEmpty()])
+    Promise.all([seedEmployeesIfEmpty(), seedQuestionsIfEmpty().then(seedMissingTeamQuestions)])
       .catch((seedError) => console.error(seedError))
       .finally(() => {
         if (!mounted) return;
@@ -350,13 +356,43 @@ function Stat({ icon, label, value, detail }) {
   );
 }
 
+// Confirmaciones y avisos con SweetAlert, con los colores del panel.
+const swal = Swal.mixin({
+  buttonsStyling: true,
+  cancelButtonColor: "#8790a8",
+  cancelButtonText: "Cancelar",
+  confirmButtonColor: "#2149d8",
+  reverseButtons: true,
+});
+
+async function confirmAction({ title, text, confirmText, danger = false }) {
+  const result = await swal.fire({
+    confirmButtonColor: danger ? "#d9382a" : "#2149d8",
+    confirmButtonText: confirmText,
+    focusCancel: danger,
+    icon: danger ? "warning" : "question",
+    showCancelButton: true,
+    text,
+    title,
+  });
+  return result.isConfirmed;
+}
+
+function notifyDone(title) {
+  swal.fire({ icon: "success", position: "top-end", showConfirmButton: false, timer: 1800, title, toast: true });
+}
+
+function notifyError(text) {
+  swal.fire({ confirmButtonText: "Entendido", icon: "error", text, title: "Algo salió mal" });
+}
+
 const defaultAvatar =
   "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=160&q=80";
 
 function Dialog({ title, children, onClose }) {
   useEffect(() => {
     const handleKey = (event) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !Swal.isVisible()) onClose();
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
@@ -381,10 +417,10 @@ function Dialog({ title, children, onClose }) {
   );
 }
 
-function EmployeeForm({ employee, order, onClose, onSaved }) {
+function EmployeeForm({ employee, order, defaultTeam, onClose, onSaved }) {
   const [form, setForm] = useState({
     name: employee?.name ?? "",
-    role: employee?.role ?? "Vendedor",
+    team: employee ? getTeamId(employee) : defaultTeam,
     avatar: employee?.avatar ?? defaultAvatar,
     status: employee?.status ?? "Activo",
   });
@@ -398,16 +434,30 @@ function EmployeeForm({ employee, order, onClose, onSaved }) {
   const submit = async (event) => {
     event.preventDefault();
 
-    if (!form.name.trim() || !form.role.trim()) {
-      setError("Escribe el nombre y el puesto del empleado.");
+    if (!form.name.trim()) {
+      setError("Escribe el nombre del empleado.");
+      return;
+    }
+
+    if (
+      employee &&
+      !(await confirmAction({
+        title: "¿Guardar los cambios?",
+        text: `Se actualizarán los datos de ${employee.name}.`,
+        confirmText: "Sí, guardar",
+      }))
+    ) {
       return;
     }
 
     try {
       setSaving(true);
       setError("");
+      // Conserva el puesto escrito antes (ej. "Vendedora") si el tipo no cambió.
+      const keepRole = employee?.role && getTeamId(employee) === form.team;
       await saveEmployee({
         ...form,
+        role: keepRole ? employee.role : getTeam(form.team).label,
         id: employee?.id,
         order: employee?.order ?? order,
       });
@@ -434,7 +484,13 @@ function EmployeeForm({ employee, order, onClose, onSaved }) {
       </label>
       <label>
         Puesto
-        <input value={form.role} onChange={(event) => updateField("role", event.target.value)} />
+        <select value={form.team} onChange={(event) => updateField("team", event.target.value)}>
+          {teams.map((team) => (
+            <option key={team.id} value={team.id}>
+              {team.label}
+            </option>
+          ))}
+        </select>
       </label>
       <label>
         URL de la foto
@@ -459,10 +515,11 @@ function EmployeeForm({ employee, order, onClose, onSaved }) {
   );
 }
 
-function QuestionForm({ question, order, onClose, onSaved }) {
+function QuestionForm({ question, order, defaultTeam, onClose, onSaved }) {
   const [form, setForm] = useState({
     title: question?.title ?? "",
     description: question?.description ?? "",
+    team: question ? getTeamId(question) : defaultTeam,
     active: question?.active ?? true,
   });
   const [saving, setSaving] = useState(false);
@@ -477,6 +534,17 @@ function QuestionForm({ question, order, onClose, onSaved }) {
 
     if (!form.title.trim() || !form.description.trim()) {
       setError("Escribe la pregunta y el texto de ayuda.");
+      return;
+    }
+
+    if (
+      question &&
+      !(await confirmAction({
+        title: "¿Guardar los cambios?",
+        text: `Se actualizará la pregunta "${question.title}".`,
+        confirmText: "Sí, guardar",
+      }))
+    ) {
       return;
     }
 
@@ -508,6 +576,16 @@ function QuestionForm({ question, order, onClose, onSaved }) {
       <label>
         Texto de ayuda
         <input value={form.description} onChange={(event) => updateField("description", event.target.value)} />
+      </label>
+      <label>
+        Para
+        <select value={form.team} onChange={(event) => updateField("team", event.target.value)}>
+          {teams.map((team) => (
+            <option key={team.id} value={team.id}>
+              {team.plural}
+            </option>
+          ))}
+        </select>
       </label>
       <label className="checkbox-line">
         <input
@@ -607,21 +685,100 @@ function DateRangeForm({ initialRange, onApply, onClose }) {
   );
 }
 
+// Lucide no trae moto; este ícono sigue su mismo estilo (trazo 2, bordes redondeados).
+function Motorbike({ size = 24, ...props }) {
+  return (
+    <svg
+      fill="none"
+      height={size}
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      viewBox="0 0 24 24"
+      width={size}
+      {...props}
+    >
+      <circle cx="5" cy="17" r="3" />
+      <circle cx="19" cy="17" r="3" />
+      <path d="M14 6h2.5l2.5 11" />
+      <path d="M8 17h3l3-5h3.6" />
+      <path d="M2 8h6v4H2z" />
+    </svg>
+  );
+}
+
+const TEAM_ICONS = { ventas: ShoppingBag, delivery: Motorbike, seguridad: ShieldCheck };
+
+function TeamIcon({ teamId, size = 16 }) {
+  const Icon = TEAM_ICONS[teamId] ?? User;
+  return <Icon aria-hidden="true" size={size} />;
+}
+
+function TeamBadge({ teamId }) {
+  const team = getTeam(teamId);
+  return (
+    <span className={`team-badge team-${team.id}`}>
+      <TeamIcon size={13} teamId={team.id} />
+      {team.label}
+    </span>
+  );
+}
+
+// Pantallas del panel: /admin (ranking), /admin/empleados y /admin/preguntas.
+const ADMIN_VIEWS = [
+  { id: "ranking", path: "admin", label: "Ranking", icon: Trophy },
+  { id: "empleados", path: "admin/empleados", label: "Empleados", icon: Users },
+  { id: "preguntas", path: "admin/preguntas", label: "Preguntas", icon: MessageCircle },
+];
+
+function getAdminViewFromPath() {
+  const route = window.location.pathname.slice(import.meta.env.BASE_URL.length - 1);
+  const match = route.match(/^\/admin\/(empleados|preguntas)/);
+  return match ? match[1] : "ranking";
+}
+
 function AdminDashboard({ user }) {
   const { employees, questions, setQuestions, evaluations, loading, error, refresh } = useDashboardData({ admin: true });
+  const [view, setView] = useState(getAdminViewFromPath);
   const [employeeModal, setEmployeeModal] = useState(null);
   const [questionModal, setQuestionModal] = useState(null);
   const [dateModalOpen, setDateModalOpen] = useState(false);
   const [dateRange, setDateRange] = useState(getCurrentMonthRange);
-  const filteredEvaluations = useMemo(() => filterEvaluationsByDate(evaluations, dateRange), [evaluations, dateRange]);
-  const ranking = useMemo(() => buildRanking(employees, filteredEvaluations), [employees, filteredEvaluations]);
+  const [teamId, setTeamId] = useState(DEFAULT_TEAM);
+  const team = getTeam(teamId);
+  // Cada tipo de puesto tiene su propio ranking.
+  const teamEmployees = useMemo(() => employees.filter((item) => getTeamId(item) === teamId), [employees, teamId]);
+  const filteredEvaluations = useMemo(() => {
+    const teamIds = new Set(teamEmployees.map((item) => item.id));
+    return filterEvaluationsByDate(evaluations, dateRange).filter((evaluation) => teamIds.has(evaluation.employeeId));
+  }, [evaluations, dateRange, teamEmployees]);
+  const ranking = useMemo(() => buildRanking(teamEmployees, filteredEvaluations), [teamEmployees, filteredEvaluations]);
   const totalReviews = filteredEvaluations.length;
   const average = totalReviews
     ? filteredEvaluations.reduce((sum, evaluation) => sum + (typeof evaluation.score === "number" ? evaluation.score : 0), 0) /
       totalReviews
     : 0;
   const dateLabel = `${formatDisplayDate(dateRange.start)} – ${formatDisplayDate(dateRange.end)}`;
-  const activeQuestionCount = questions.filter((question) => question.active).length;
+  const activeQuestionCount = questions.filter((question) => question.active && getTeamId(question) === teamId).length;
+
+  useEffect(() => {
+    const handlePopState = () => setView(getAdminViewFromPath());
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const goTo = (nextView) => {
+    const path = appPath(ADMIN_VIEWS.find((item) => item.id === nextView).path);
+    if (window.location.pathname !== path) window.history.pushState({}, "", path);
+    setView(nextView);
+    window.scrollTo(0, 0);
+  };
+
+  const openEmployee = (employee, teamForNew = teamId) =>
+    setEmployeeModal(employee ? { mode: "edit", employee } : { mode: "create", team: teamForNew });
+  const openQuestion = (question, teamForNew = teamId) =>
+    setQuestionModal(question ? { mode: "edit", question } : { mode: "create", team: teamForNew });
 
   return (
     <div className="admin-shell">
@@ -639,11 +796,13 @@ function AdminDashboard({ user }) {
               )}
             </span>
           </div>
-          <button className="date-filter" onClick={() => setDateModalOpen(true)} type="button">
-            <CalendarDays size={18} />
-            <span>{dateLabel}</span>
-            <ChevronDown size={16} />
-          </button>
+          {view === "ranking" && (
+            <button className="date-filter" onClick={() => setDateModalOpen(true)} type="button">
+              <CalendarDays size={18} />
+              <span>{dateLabel}</span>
+              <ChevronDown size={16} />
+            </button>
+          )}
           <span className="admin-badge" title={user.email} aria-label="Administrador">
             {getInitials(getUsernameFromEmail(user.email)).slice(0, 2) || "AD"}
           </span>
@@ -652,6 +811,20 @@ function AdminDashboard({ user }) {
             <span>Salir</span>
           </button>
         </div>
+        <nav className="admin-nav" aria-label="Secciones del panel">
+          {ADMIN_VIEWS.map((item) => (
+            <button
+              aria-current={view === item.id ? "page" : undefined}
+              className={view === item.id ? "admin-nav-item active" : "admin-nav-item"}
+              key={item.id}
+              onClick={() => goTo(item.id)}
+              type="button"
+            >
+              <item.icon size={17} />
+              {item.label}
+            </button>
+          ))}
+        </nav>
       </header>
 
       <main className="admin-main">
@@ -662,56 +835,85 @@ function AdminDashboard({ user }) {
         )}
         {error && <div className="notice notice-error">{error}</div>}
 
-        <section className="page-head">
-          <div>
-            <h1>Ranking del equipo</h1>
-            <p>Cómo califican los clientes la atención de cada empleado en el periodo seleccionado.</p>
-          </div>
-          <div className="stats-strip">
-            <Stat
-              detail="en el periodo"
-              icon={<Users size={20} />}
-              label="Evaluaciones"
-              value={loading ? "…" : totalReviews.toLocaleString("es-DO")}
-            />
-            <Stat
-              detail="de 5 estrellas"
-              icon={<Star size={20} />}
-              label="Promedio general"
-              value={loading || !totalReviews ? "--" : average.toFixed(1)}
-            />
-            <Stat
-              detail="en la encuesta"
-              icon={<MessageCircle size={20} />}
-              label="Preguntas activas"
-              value={loading ? "…" : activeQuestionCount}
-            />
-          </div>
-        </section>
+        {view === "ranking" && (
+          <>
+            <section className="page-head">
+              <div>
+                <h1>Ranking de {team.plural.toLowerCase()}</h1>
+                <p>Cómo califican los clientes la atención de cada empleado en el periodo seleccionado.</p>
+                <div className="team-tabs" role="tablist" aria-label="Tipo de puesto">
+                  {teams.map((item) => (
+                    <button
+                      aria-selected={item.id === teamId}
+                      className={item.id === teamId ? `team-tab team-${item.id} active` : `team-tab team-${item.id}`}
+                      key={item.id}
+                      onClick={() => setTeamId(item.id)}
+                      role="tab"
+                      type="button"
+                    >
+                      <TeamIcon size={16} teamId={item.id} />
+                      {item.plural}
+                      <span>{employees.filter((employee) => getTeamId(employee) === item.id).length}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="stats-strip">
+                <Stat
+                  detail="en el periodo"
+                  icon={<Users size={20} />}
+                  label="Evaluaciones"
+                  value={loading ? "…" : totalReviews.toLocaleString("es-DO")}
+                />
+                <Stat
+                  detail="de 5 estrellas"
+                  icon={<Star size={20} />}
+                  label="Promedio general"
+                  value={loading || !totalReviews ? "--" : average.toFixed(1)}
+                />
+                <Stat
+                  detail="en la encuesta"
+                  icon={<MessageCircle size={20} />}
+                  label="Preguntas activas"
+                  value={loading ? "…" : activeQuestionCount}
+                />
+              </div>
+            </section>
+            <RankingPanel loading={loading} ranking={ranking} team={team} />
+          </>
+        )}
 
-        <section className="workspace">
-          <RankingPanel loading={loading} ranking={ranking} />
-          <aside className="side-stack">
-            <ManageEmployees
-              employees={employees}
-              loading={loading}
-              onMigrated={refresh}
-              onCreate={() => setEmployeeModal({ mode: "create" })}
-              onEdit={(employee) => setEmployeeModal({ mode: "edit", employee })}
-            />
-            <ManageQuestions
-              onCreate={() => setQuestionModal({ mode: "create" })}
-              onEdit={(question) => setQuestionModal({ mode: "edit", question })}
-              questions={questions}
-              setQuestions={setQuestions}
-            />
-          </aside>
-        </section>
+        {view === "empleados" && (
+          <ManageEmployees
+            employees={employees}
+            loading={loading}
+            onCreate={(teamForNew) => openEmployee(null, teamForNew)}
+            onEdit={(employee) => openEmployee(employee)}
+            onMigrated={refresh}
+          />
+        )}
+
+        {view === "preguntas" && (
+          <ManageQuestions
+            loading={loading}
+            onCreate={(teamForNew) => openQuestion(null, teamForNew)}
+            onEdit={(question) => openQuestion(question)}
+            questions={questions}
+            setQuestions={setQuestions}
+          />
+        )}
       </main>
 
-      <button className="mobile-admin-cta" onClick={() => setEmployeeModal({ mode: "create" })} type="button">
-        <Plus size={20} /> Nuevo empleado
-      </button>
+      {view === "empleados" && (
+        <button className="mobile-admin-cta" onClick={() => openEmployee(null)} type="button">
+          <Plus size={20} /> Nuevo empleado
+        </button>
+      )}
+      {view === "preguntas" && (
+        <button className="mobile-admin-cta" onClick={() => openQuestion(null)} type="button">
+          <Plus size={20} /> Nueva pregunta
+        </button>
+      )}
 
       {employeeModal && (
         <Dialog
@@ -719,6 +921,7 @@ function AdminDashboard({ user }) {
           title={employeeModal.mode === "edit" ? "Editar empleado" : "Nuevo empleado"}
         >
           <EmployeeForm
+            defaultTeam={employeeModal.team ?? teamId}
             employee={employeeModal.employee}
             onClose={() => setEmployeeModal(null)}
             onSaved={refresh}
@@ -733,6 +936,7 @@ function AdminDashboard({ user }) {
           title={questionModal.mode === "edit" ? "Editar pregunta" : "Nueva pregunta"}
         >
           <QuestionForm
+            defaultTeam={questionModal.team ?? teamId}
             onClose={() => setQuestionModal(null)}
             onSaved={refresh}
             order={questions.length + 1}
@@ -782,7 +986,7 @@ function Podium({ leaders }) {
   );
 }
 
-function RankingPanel({ ranking, loading }) {
+function RankingPanel({ ranking, loading, team }) {
   const showPodium = !loading && ranking.length >= 3;
   const rest = showPodium ? ranking.slice(3) : ranking;
   const offset = showPodium ? 3 : 0;
@@ -793,12 +997,12 @@ function RankingPanel({ ranking, loading }) {
         <h2>
           <Trophy size={20} /> Posiciones
         </h2>
-        <span className="panel-meta">{ranking.length} empleados</span>
+        <TeamBadge teamId={team.id} />
       </header>
 
       {loading && <div className="empty-state">Cargando ranking…</div>}
       {!loading && ranking.length === 0 && (
-        <div className="empty-state">Agrega tu primer empleado para empezar a recibir evaluaciones.</div>
+        <div className="empty-state">Aún no hay {team.plural.toLowerCase()}. Agrégalos en la pantalla de Empleados.</div>
       )}
 
       {showPodium && <Podium leaders={ranking.slice(0, 3)} />}
@@ -847,7 +1051,14 @@ function CopyLinkButton({ employee }) {
     try {
       await navigator.clipboard.writeText(url);
     } catch {
-      window.prompt(`Copia el enlace de ${employee.name}:`, url);
+      swal.fire({
+        confirmButtonText: "Listo",
+        input: "text",
+        inputAttributes: { readonly: "" },
+        inputValue: url,
+        text: "Mantén presionado el enlace para copiarlo.",
+        title: `Enlace de ${employee.name}`,
+      });
       return;
     }
     setCopied(true);
@@ -903,52 +1114,132 @@ function LegacyIdNotice({ employees, onMigrated }) {
   );
 }
 
-function ManageEmployees({ employees, loading, onCreate, onEdit, onMigrated }) {
-  const legacyEmployees = loading ? [] : employees.filter(hasLegacyEmployeeId);
-
+function TeamPanel({ team, count, createLabel, onCreate, children }) {
   return (
-    <section className="panel">
+    <section className={`panel team-panel team-${team.id}`}>
       <header className="panel-head">
         <h2>
-          <User size={20} /> Empleados
+          <span className="team-icon">
+            <TeamIcon size={18} teamId={team.id} />
+          </span>
+          {team.plural}
+          <span className="panel-meta">{count}</span>
         </h2>
         <button className="button button-primary button-small" onClick={onCreate} type="button">
-          <Plus size={16} /> Nuevo
+          <Plus size={16} /> {createLabel}
         </button>
       </header>
-      {legacyEmployees.length > 0 && <LegacyIdNotice employees={legacyEmployees} onMigrated={onMigrated} />}
-      <div className="list">
-        {employees.length === 0 && <div className="empty-state">Aún no hay empleados. Crea el primero.</div>}
-        {employees.map((employee) => (
-          <article className="list-row employee-row" key={employee.id}>
-            <Avatar name={employee.name} size={38} src={employee.avatar} />
-            <div className="list-copy">
-              <strong>{employee.name}</strong>
-              <span>{employee.role}</span>
-            </div>
-            <span className={employee.status === "Activo" ? "status" : "status status-off"}>{employee.status}</span>
-            <div className="row-actions">
-              <CopyLinkButton employee={employee} />
-              <button
-                aria-label={`Editar ${employee.name}`}
-                className="icon-button"
-                onClick={() => onEdit(employee)}
-                type="button"
-              >
-                <Pencil size={16} />
-              </button>
-              <button aria-label={`Eliminar ${employee.name}`} className="icon-button danger" type="button">
-                <Trash2 size={16} />
-              </button>
-            </div>
-          </article>
-        ))}
-      </div>
+      <div className="list">{children}</div>
     </section>
   );
 }
 
-function ManageQuestions({ onCreate, onEdit, questions, setQuestions }) {
+function ManageEmployees({ employees, loading, onCreate, onEdit, onMigrated }) {
+  const legacyEmployees = loading ? [] : employees.filter(hasLegacyEmployeeId);
+
+  const removeEmployee = async (employee) => {
+    const confirmed = await confirmAction({
+      title: `¿Borrar a ${employee.name}?`,
+      text: "Saldrá del ranking y de la encuesta, y su enlace dejará de funcionar. Esta acción no se puede deshacer.",
+      confirmText: "Sí, borrar",
+      danger: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      await deleteEmployee(employee.id);
+      notifyDone(`${employee.name} fue borrado`);
+    } catch (deleteError) {
+      console.error(deleteError);
+      notifyError("No se pudo borrar el empleado. Revisa tu conexión e inténtalo de nuevo.");
+    }
+  };
+
+  return (
+    <>
+      <section className="page-head">
+        <div>
+          <h1>Empleados</h1>
+          <p>Cada empleado tiene un tipo de puesto, y con él su ranking y sus preguntas.</p>
+        </div>
+      </section>
+      {legacyEmployees.length > 0 && (
+        <div className="panel legacy-panel">
+          <LegacyIdNotice employees={legacyEmployees} onMigrated={onMigrated} />
+        </div>
+      )}
+      <div className="team-sections">
+        {teams.map((team) => {
+          const teamEmployees = employees.filter((employee) => getTeamId(employee) === team.id);
+
+          return (
+            <TeamPanel
+              count={teamEmployees.length}
+              createLabel="Nuevo"
+              key={team.id}
+              onCreate={() => onCreate(team.id)}
+              team={team}
+            >
+              {loading && teamEmployees.length === 0 && <div className="empty-state">Cargando…</div>}
+              {!loading && teamEmployees.length === 0 && (
+                <div className="empty-state">Aún no hay {team.plural.toLowerCase()}.</div>
+              )}
+              {teamEmployees.map((employee) => (
+                <article className="list-row employee-row" key={employee.id}>
+                  <Avatar name={employee.name} size={38} src={employee.avatar} />
+                  <div className="list-copy">
+                    <strong>{employee.name}</strong>
+                    <span>{employee.role}</span>
+                  </div>
+                  <span className={employee.status === "Activo" ? "status" : "status status-off"}>{employee.status}</span>
+                  <div className="row-actions">
+                    <CopyLinkButton employee={employee} />
+                    <button
+                      aria-label={`Editar ${employee.name}`}
+                      className="icon-button"
+                      onClick={() => onEdit(employee)}
+                      type="button"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button
+                      aria-label={`Eliminar ${employee.name}`}
+                      className="icon-button danger"
+                      onClick={() => removeEmployee(employee)}
+                      type="button"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </TeamPanel>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function ManageQuestions({ loading, onCreate, onEdit, questions, setQuestions }) {
+  const removeQuestion = async (question) => {
+    const confirmed = await confirmAction({
+      title: "¿Borrar esta pregunta?",
+      text: `"${question.title}" dejará de salir en la encuesta. Las evaluaciones que ya la respondieron se conservan.`,
+      confirmText: "Sí, borrar",
+      danger: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      await deleteQuestion(question.id);
+      notifyDone("Pregunta borrada");
+    } catch (deleteError) {
+      console.error(deleteError);
+      notifyError("No se pudo borrar la pregunta. Revisa tu conexión e inténtalo de nuevo.");
+    }
+  };
+
   const toggleQuestion = async (id) => {
     const currentQuestion = questions.find((question) => question.id === id);
 
@@ -957,63 +1248,88 @@ function ManageQuestions({ onCreate, onEdit, questions, setQuestions }) {
     }
 
     const nextActive = !currentQuestion.active;
+    const setActive = (active) =>
+      setQuestions((current) => current.map((question) => (question.id === id ? { ...question, active } : question)));
 
-    setQuestions((current) =>
-      current.map((question) => (question.id === id ? { ...question, active: nextActive } : question)),
-    );
+    setActive(nextActive);
 
     try {
       await updateQuestionStatus(id, nextActive);
     } catch (questionError) {
       console.error(questionError);
-      setQuestions(questions);
+      setActive(!nextActive);
     }
   };
 
   return (
-    <section className="panel">
-      <header className="panel-head">
-        <h2>
-          <MessageCircle size={20} /> Preguntas de la encuesta
-        </h2>
-        <button className="button button-primary button-small" onClick={onCreate} type="button">
-          <Plus size={16} /> Nueva
-        </button>
-      </header>
-      <div className="list">
-        {questions.map((question) => (
-          <article className={question.active ? "list-row question-row" : "list-row question-row inactive"} key={question.id}>
-            <GripVertical className="grip" size={16} />
-            <div className="list-copy">
-              <strong>{question.title}</strong>
-              <span>{question.description}</span>
-            </div>
-            <button
-              aria-label={`${question.active ? "Ocultar" : "Mostrar"} ${question.title} en la encuesta`}
-              aria-pressed={question.active}
-              className={question.active ? "switch on" : "switch"}
-              onClick={() => toggleQuestion(question.id)}
-              type="button"
+    <>
+      <section className="page-head">
+        <div>
+          <h1>Preguntas de la encuesta</h1>
+          <p>El cliente solo ve las preguntas activas del puesto de quien lo atendió.</p>
+        </div>
+      </section>
+      <div className="team-sections">
+        {teams.map((team) => {
+          const teamQuestions = questions.filter((question) => getTeamId(question) === team.id);
+          const activeCount = teamQuestions.filter((question) => question.active).length;
+
+          return (
+            <TeamPanel
+              count={`${activeCount} activas`}
+              createLabel="Nueva"
+              key={team.id}
+              onCreate={() => onCreate(team.id)}
+              team={team}
             >
-              <span />
-            </button>
-            <div className="row-actions">
-              <button
-                aria-label={`Editar ${question.title}`}
-                className="icon-button"
-                onClick={() => onEdit(question)}
-                type="button"
-              >
-                <Pencil size={16} />
-              </button>
-              <button aria-label={`Eliminar ${question.title}`} className="icon-button danger" type="button">
-                <Trash2 size={16} />
-              </button>
-            </div>
-          </article>
-        ))}
+              {loading && teamQuestions.length === 0 && <div className="empty-state">Cargando…</div>}
+              {!loading && teamQuestions.length === 0 && (
+                <div className="empty-state">Aún no hay preguntas para {team.plural.toLowerCase()}.</div>
+              )}
+              {teamQuestions.map((question) => (
+                <article
+                  className={question.active ? "list-row question-row" : "list-row question-row inactive"}
+                  key={question.id}
+                >
+                  <GripVertical className="grip" size={16} />
+                  <div className="list-copy">
+                    <strong>{question.title}</strong>
+                    <span>{question.description}</span>
+                  </div>
+                  <button
+                    aria-label={`${question.active ? "Ocultar" : "Mostrar"} ${question.title} en la encuesta`}
+                    aria-pressed={question.active}
+                    className={question.active ? "switch on" : "switch"}
+                    onClick={() => toggleQuestion(question.id)}
+                    type="button"
+                  >
+                    <span />
+                  </button>
+                  <div className="row-actions">
+                    <button
+                      aria-label={`Editar ${question.title}`}
+                      className="icon-button"
+                      onClick={() => onEdit(question)}
+                      type="button"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button
+                      aria-label={`Eliminar ${question.title}`}
+                      className="icon-button danger"
+                      onClick={() => removeQuestion(question)}
+                      type="button"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </TeamPanel>
+          );
+        })}
       </div>
-    </section>
+    </>
   );
 }
 
@@ -1071,7 +1387,13 @@ function PublicSurvey() {
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
-  const activeQuestions = useMemo(() => questions.filter((question) => question.active), [questions]);
+  const employee = employees.find((item) => item.id === selectedEmployee) ?? null;
+  const employeeTeamId = employee ? getTeamId(employee) : null;
+  // Cada empleado ve solo las preguntas de su tipo de puesto.
+  const activeQuestions = useMemo(
+    () => questions.filter((question) => question.active && getTeamId(question) === employeeTeamId),
+    [questions, employeeTeamId],
+  );
 
   useEffect(() => {
     setAnswers((current) =>
@@ -1079,7 +1401,6 @@ function PublicSurvey() {
     );
   }, [activeQuestions]);
 
-  const employee = employees.find((item) => item.id === selectedEmployee) ?? null;
   const canSubmit = Boolean(employee) && activeQuestions.length > 0 && Object.values(answers).every(Boolean);
 
   // Si el enlace trae un empleado que no existe (borrado o mal copiado), vuelve a la lista.
@@ -1156,7 +1477,8 @@ function PublicSurvey() {
     window.setTimeout(() => setCloseBlocked(true), 300);
   };
 
-  const questionIcons = [Smile, MessageCircle, Clock, ShoppingBag];
+  const questionIcons =
+    employeeTeamId === "delivery" ? [Clock, Package, Smile, User, Motorbike] : [Smile, MessageCircle, Clock, ShoppingBag];
 
   return (
     <div className={`survey-shell step-${step}`}>
@@ -1192,7 +1514,9 @@ function PublicSurvey() {
                     <Avatar name={item.name} size={48} src={item.avatar} />
                     <span>
                       <strong>{item.name}</strong>
-                      <small>{item.role}</small>
+                      <small className="team-line">
+                        <TeamIcon size={13} teamId={getTeamId(item)} /> {item.role}
+                      </small>
                     </span>
                     <ChevronRight size={20} />
                   </button>
@@ -1233,6 +1557,9 @@ function PublicSurvey() {
             {(error || submitError) && <p className="form-error">{error || submitError}</p>}
 
             {loading && <div className="loading-card">Cargando preguntas…</div>}
+            {!loading && employee && activeQuestions.length === 0 && (
+              <div className="loading-card">Todavía no hay preguntas para este puesto.</div>
+            )}
 
             <div className="question-list">
               {!loading &&

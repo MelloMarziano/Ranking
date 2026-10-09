@@ -1772,3 +1772,208 @@ button:disabled {
     box-shadow: 0 0 0 4px rgba(61, 220, 151, 0.2);
   }
 }
+
+/* Tipos de puesto: cada uno con su color e ícono */
+.team-ventas {
+  --team: var(--cobalt);
+  --team-soft: var(--cobalt-soft);
+}
+
+.team-delivery {
+  --team: #c25e00;
+  --team-soft: #fff0e0;
+}
+
+.team-seguridad {
+  --team: var(--mint);
+  --team-soft: var(--mint-soft);
+}
+
+.admin-nav {
+  display: flex;
+  gap: 4px;
+  margin: 0 auto;
+  max-width: 1200px;
+  overflow-x: auto;
+  padding: 0 24px;
+}
+
+.admin-nav-item {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  color: rgba(255, 255, 255, 0.7);
+  display: inline-flex;
+  flex: none;
+  font-size: 15px;
+  font-weight: 600;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 14px;
+  transition:
+    color 150ms ease,
+    border-color 150ms ease;
+}
+
+.admin-nav-item:hover {
+  color: white;
+}
+
+.admin-nav-item.active {
+  border-bottom-color: var(--marigold);
+  color: white;
+}
+
+.team-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.team-tab {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-2);
+  display: inline-flex;
+  font-size: 14px;
+  font-weight: 600;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.team-tab svg {
+  color: var(--team);
+}
+
+.team-tab:hover {
+  border-color: var(--team);
+}
+
+.team-tab span {
+  background: var(--surface-2);
+  border-radius: 999px;
+  color: var(--ink-3);
+  font-size: 12px;
+  min-width: 22px;
+  padding: 1px 7px;
+}
+
+.team-tab.active {
+  background: var(--team);
+  border-color: var(--team);
+  color: #fff;
+}
+
+.team-tab.active svg {
+  color: #fff;
+}
+
+.team-tab.active span {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.team-badge {
+  align-items: center;
+  background: var(--team-soft);
+  border-radius: 999px;
+  color: var(--team);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 5px;
+  padding: 3px 10px;
+}
+
+.team-sections {
+  align-items: start;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+}
+
+.team-panel {
+  border-top: 3px solid var(--team);
+}
+
+.team-panel .panel-head h2 .panel-meta {
+  font-weight: 500;
+}
+
+.team-icon {
+  align-items: center;
+  background: var(--team-soft);
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.panel-head h2 .team-icon svg {
+  color: var(--team);
+}
+
+.legacy-panel {
+  margin-bottom: 20px;
+}
+
+.legacy-panel .legacy-notice {
+  border-bottom: 0;
+}
+
+.employee-option .team-line {
+  align-items: center;
+  display: flex;
+  gap: 5px;
+}
+
+.employee-option .team-line svg {
+  color: var(--ink-3);
+  flex: none;
+}
+
+@media (max-width: 760px) {
+  .admin-nav {
+    padding: 0 8px;
+  }
+
+  .admin-nav-item {
+    flex: 1;
+    justify-content: center;
+    padding: 0 8px;
+  }
+
+  .team-sections {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* SweetAlert con la tipografía y bordes del panel */
+.swal2-popup {
+  border-radius: var(--radius-lg);
+  font-family: var(--font-body);
+}
+
+.swal2-title {
+  color: var(--ink);
+  font-family: var(--font-display);
+}
+
+.swal2-html-container {
+  color: var(--ink-2);
+}
+
+.swal2-styled {
+  border-radius: var(--radius-sm) !important;
+  font-weight: 600;
+}
