@@ -874,6 +874,12 @@ button:disabled {
   gap: 6px;
 }
 
+.modal-form .field-hint {
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 400;
+}
+
 .modal-form input,
 .modal-form select {
   background: var(--surface);

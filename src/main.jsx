@@ -270,8 +270,19 @@ function getInitials(name = "") {
     .join("");
 }
 
-function Avatar({ src, name, size = 44 }) {
+// Los enlaces de compartir de Google Drive abren un visor, no la imagen.
+// Se convierten a la miniatura pública del archivo, que sí carga en <img>.
+function toImageUrl(url) {
+  const value = (url ?? "").trim();
+  if (!/^https?:\/\/(drive|docs)\.google\.com\//i.test(value)) return value;
+
+  const id = value.match(/\/d\/([\w-]{10,})/)?.[1] ?? value.match(/[?&]id=([\w-]{10,})/)?.[1];
+  return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w400` : value;
+}
+
+function Avatar({ src: rawSrc, name, size = 44 }) {
   const [failed, setFailed] = useState(false);
+  const src = toImageUrl(rawSrc);
 
   useEffect(() => {
     setFailed(false);
@@ -457,6 +468,7 @@ function EmployeeForm({ employee, order, defaultTeam, onClose, onSaved }) {
       const keepRole = employee?.role && getTeamId(employee) === form.team;
       await saveEmployee({
         ...form,
+        avatar: toImageUrl(form.avatar),
         role: keepRole ? employee.role : getTeam(form.team).label,
         id: employee?.id,
         order: employee?.order ?? order,
@@ -495,6 +507,10 @@ function EmployeeForm({ employee, order, defaultTeam, onClose, onSaved }) {
       <label>
         URL de la foto
         <input value={form.avatar} onChange={(event) => updateField("avatar", event.target.value)} />
+        <small className="field-hint">
+          Puedes pegar un enlace de Google Drive. El archivo debe estar compartido como “Cualquier persona con el
+          enlace”.
+        </small>
       </label>
       <label>
         Estado
