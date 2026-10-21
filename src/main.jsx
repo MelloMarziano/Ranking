@@ -17,6 +17,7 @@ import {
   Package,
   Pencil,
   Plus,
+  RotateCcw,
   ShieldCheck,
   ShoppingBag,
   Smile,
@@ -44,6 +45,7 @@ import {
   subscribeEvaluations,
   subscribeQuestions,
   migrateEmployeeToGeneratedId,
+  resetEvaluations,
   saveEmployee,
   saveEvaluation,
   saveQuestion,
@@ -251,12 +253,12 @@ function useDashboardData({ admin = false } = {}) {
 
 // La app puede vivir en una subcarpeta (ej. GitHub Pages: /Ranking/), así que las rutas parten de BASE_URL.
 const appPath = (path = "") => `${import.meta.env.BASE_URL}${path}`;
-const LOGO_URL = appPath("assets/arturo-hookah-logo-cropped.png");
+const LOGO_URL = appPath("assets/arturo-3q-smoke-mascot.png");
 
 function Logo({ className = "brand" }) {
   return (
     <a className={className} href={appPath("admin")} aria-label="Ir al panel admin">
-      <img src={LOGO_URL} alt="Arturo Hookah" />
+      <img src={LOGO_URL} alt="Arturo 3Q Smoke" />
     </a>
   );
 }
@@ -918,6 +920,7 @@ function AdminDashboard({ user }) {
               </div>
             </section>
             <RankingPanel loading={loading} ranking={ranking} team={team} />
+            {!loading && hasFirebaseConfig && <ResetVotesButton total={evaluations.length} />}
           </>
         )}
 
@@ -1092,6 +1095,55 @@ function RankingPanel({ ranking, loading, team }) {
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+// Borra todas las evaluaciones para empezar de cero. Pide escribir REINICIAR porque no se puede deshacer.
+function ResetVotesButton({ total }) {
+  const [resetting, setResetting] = useState(false);
+
+  const reset = async () => {
+    const result = await swal.fire({
+      confirmButtonColor: "#d9382a",
+      confirmButtonText: "Sí, reiniciar",
+      focusCancel: true,
+      html:
+        "Se borrarán <b>todas las evaluaciones</b> de todos los puestos y el ranking quedará en 0." +
+        "<br><br>Esta acción no se puede deshacer. Escribe <b>REINICIAR</b> para confirmar.",
+      icon: "warning",
+      input: "text",
+      inputPlaceholder: "REINICIAR",
+      inputValidator: (value) => (value.trim().toUpperCase() === "REINICIAR" ? null : "Escribe REINICIAR para continuar."),
+      showCancelButton: true,
+      title: "¿Reiniciar las votaciones?",
+    });
+    if (!result.isConfirmed) return;
+
+    try {
+      setResetting(true);
+      const deleted = await resetEvaluations();
+      notifyDone(`Votaciones reiniciadas (${deleted.toLocaleString("es-DO")} borradas)`);
+    } catch (resetError) {
+      console.error(resetError);
+      notifyError("No se pudieron reiniciar las votaciones. Revisa tu conexión e inténtalo de nuevo.");
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  return (
+    <section className="danger-zone">
+      <div>
+        <strong>Reiniciar votaciones</strong>
+        <span>
+          Borra las {total.toLocaleString("es-DO")} evaluaciones guardadas y pone a todos los empleados en 0.
+        </span>
+      </div>
+      <button className="button button-danger" disabled={resetting || total === 0} onClick={reset} type="button">
+        <RotateCcw size={16} />
+        {resetting ? "Reiniciando..." : "Reiniciar votaciones"}
+      </button>
     </section>
   );
 }
@@ -1731,7 +1783,7 @@ function LoginScreen() {
       <form className="login-card" onSubmit={submit}>
         <div className="login-brand">
           <span className="brand brand-tile">
-            <img src={LOGO_URL} alt="Arturo Hookah" />
+            <img src={LOGO_URL} alt="Arturo 3Q Smoke" />
           </span>
           <h1>Panel de desempeño</h1>
           <p>Entra para ver el ranking y administrar el equipo.</p>

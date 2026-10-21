@@ -166,6 +166,18 @@ export async function deleteEmployee(id) {
   await deleteDoc(doc(db, "employees", id));
 }
 
+// Borra todas las evaluaciones: el ranking de todos los tipos vuelve a 0. No se puede deshacer.
+// Firestore admite hasta 500 operaciones por lote, así que se borran por tandas.
+export async function resetEvaluations() {
+  const snapshot = await getDocs(evaluationsCollection);
+  for (let index = 0; index < snapshot.docs.length; index += 450) {
+    const batch = writeBatch(db);
+    snapshot.docs.slice(index, index + 450).forEach((item) => batch.delete(item.ref));
+    await batch.commit();
+  }
+  return snapshot.size;
+}
+
 export async function deleteQuestion(id) {
   await deleteDoc(doc(db, "questions", id));
 }

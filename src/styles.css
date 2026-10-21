@@ -179,6 +179,43 @@ button:disabled {
   background: var(--surface-2);
 }
 
+.button-danger {
+  background: var(--surface);
+  border-color: var(--ember);
+  color: var(--ember);
+}
+
+.button-danger:hover:not(:disabled) {
+  background: var(--ember);
+  color: white;
+}
+
+.button-danger:disabled {
+  opacity: 0.5;
+}
+
+.danger-zone {
+  align-items: center;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  justify-content: space-between;
+  margin-top: 24px;
+  padding: 16px 20px;
+}
+
+.danger-zone div {
+  display: grid;
+  gap: 2px;
+}
+
+.danger-zone span {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
 .button-small {
   font-size: 13px;
   min-height: 32px;
