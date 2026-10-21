@@ -539,6 +539,20 @@ button:disabled {
   text-align: center;
 }
 
+.podium-slot-empty {
+  visibility: hidden;
+}
+
+.ranking-divider {
+  border-top: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 14px 20px 6px;
+  text-transform: uppercase;
+}
+
 .podium-avatar {
   margin-bottom: 10px;
   position: relative;

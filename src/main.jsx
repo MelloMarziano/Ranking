@@ -30,7 +30,7 @@ import {
 import Swal from "sweetalert2";
 import { hasFirebaseConfig } from "./firebase";
 import { getUsernameFromEmail, signInAdmin, signOutAdmin, watchAdminSession } from "./authService";
-import { DEFAULT_TEAM, employees as seedEmployees, getTeam, getTeamId, questions as seedQuestions, teams } from "./data";
+import { DEFAULT_TEAM, employees as seedEmployees, getRoleOption, getTeam, getTeamId, questions as seedQuestions, teams } from "./data";
 import {
   getEmployees,
   getQuestions,
@@ -429,9 +429,11 @@ function Dialog({ title, children, onClose }) {
 }
 
 function EmployeeForm({ employee, order, defaultTeam, onClose, onSaved }) {
+  const initialTeam = employee ? getTeamId(employee) : defaultTeam;
   const [form, setForm] = useState({
     name: employee?.name ?? "",
-    team: employee ? getTeamId(employee) : defaultTeam,
+    team: initialTeam,
+    role: getRoleOption(initialTeam, employee?.role),
     avatar: employee?.avatar ?? defaultAvatar,
     status: employee?.status ?? "Activo",
   });
@@ -441,6 +443,17 @@ function EmployeeForm({ employee, order, defaultTeam, onClose, onSaved }) {
   const updateField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
   };
+
+  // Al cambiar de tipo, el cargo pasa al equivalente del nuevo tipo (Vendedora → Repartidora).
+  const updateTeam = (teamId) => {
+    setForm((current) => {
+      const index = Math.max(getTeam(current.team).roles.indexOf(current.role), 0);
+      const roles = getTeam(teamId).roles;
+      return { ...current, team: teamId, role: roles[index] ?? roles[0] };
+    });
+  };
+
+  const teamRoles = getTeam(form.team).roles;
 
   const submit = async (event) => {
     event.preventDefault();
@@ -464,12 +477,9 @@ function EmployeeForm({ employee, order, defaultTeam, onClose, onSaved }) {
     try {
       setSaving(true);
       setError("");
-      // Conserva el puesto escrito antes (ej. "Vendedora") si el tipo no cambió.
-      const keepRole = employee?.role && getTeamId(employee) === form.team;
       await saveEmployee({
         ...form,
         avatar: toImageUrl(form.avatar),
-        role: keepRole ? employee.role : getTeam(form.team).label,
         id: employee?.id,
         order: employee?.order ?? order,
       });
@@ -496,7 +506,7 @@ function EmployeeForm({ employee, order, defaultTeam, onClose, onSaved }) {
       </label>
       <label>
         Puesto
-        <select value={form.team} onChange={(event) => updateField("team", event.target.value)}>
+        <select value={form.team} onChange={(event) => updateTeam(event.target.value)}>
           {teams.map((team) => (
             <option key={team.id} value={team.id}>
               {team.label}
@@ -504,6 +514,18 @@ function EmployeeForm({ employee, order, defaultTeam, onClose, onSaved }) {
           ))}
         </select>
       </label>
+      {teamRoles.length > 1 && (
+        <label>
+          Cargo
+          <select value={form.role} onChange={(event) => updateField("role", event.target.value)}>
+            {teamRoles.map((role) => (
+              <option key={role} value={role}>
+                {role}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label>
         URL de la foto
         <input value={form.avatar} onChange={(event) => updateField("avatar", event.target.value)} />
@@ -981,7 +1003,11 @@ function Podium({ leaders }) {
 
   return (
     <div className="podium">
-      {slots.map((employee, index) => (
+      {slots.map((employee, index) =>
+        // Con menos de 3 evaluados, el lugar vacío conserva la forma del podio.
+        !employee ? (
+          <div aria-hidden="true" className="podium-slot podium-slot-empty" key={`empty-${places[index]}`} />
+        ) : (
         <div className={`podium-slot place-${places[index]}`} key={employee.id}>
           <div className="podium-avatar">
             <Avatar name={employee.name} size={places[index] === 1 ? 72 : 56} src={employee.avatar} />
@@ -997,14 +1023,18 @@ function Podium({ leaders }) {
           </small>
           <div className="podium-step" aria-hidden="true" />
         </div>
-      ))}
+        ),
+      )}
     </div>
   );
 }
 
 function RankingPanel({ ranking, loading, team }) {
-  const showPodium = !loading && ranking.length >= 3;
-  const rest = showPodium ? ranking.slice(3) : ranking;
+  // Sin evaluaciones no hay posición: esos empleados van al final, sin número ni podio.
+  const rated = ranking.filter((employee) => employee.reviews > 0);
+  const unrated = ranking.filter((employee) => employee.reviews === 0);
+  const showPodium = !loading && rated.length > 0;
+  const rest = [...rated.slice(3), ...unrated];
   const offset = showPodium ? 3 : 0;
 
   return (
@@ -1021,7 +1051,7 @@ function RankingPanel({ ranking, loading, team }) {
         <div className="empty-state">Aún no hay {team.plural.toLowerCase()}. Agrégalos en la pantalla de Empleados.</div>
       )}
 
-      {showPodium && <Podium leaders={ranking.slice(0, 3)} />}
+      {showPodium && <Podium leaders={rated.slice(0, 3)} />}
 
       {!loading && rest.length > 0 && (
         <div className="ranking-table" role="table" aria-label="Ranking de empleados">
@@ -1032,9 +1062,15 @@ function RankingPanel({ ranking, loading, team }) {
             <span role="columnheader">Evaluaciones</span>
           </div>
           {rest.map((employee, index) => (
-            <div className="ranking-row" key={employee.id} role="row">
+            <React.Fragment key={employee.id}>
+            {employee.reviews === 0 && index === rest.length - unrated.length && (
+              <div className="ranking-divider" role="row">
+                <span role="cell">Sin evaluaciones</span>
+              </div>
+            )}
+            <div className="ranking-row" role="row">
               <span className="rank" role="cell">
-                {index + 1 + offset}
+                {employee.reviews ? index + 1 + offset : "–"}
               </span>
               <div className="person" role="cell">
                 <Avatar name={employee.name} size={40} src={employee.avatar} />
@@ -1052,6 +1088,7 @@ function RankingPanel({ ranking, loading, team }) {
                 <small> eval.</small>
               </span>
             </div>
+            </React.Fragment>
           ))}
         </div>
       )}

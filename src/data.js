@@ -104,10 +104,11 @@ export const questions = [
 
 // Tipos de puesto. Cada tipo tiene su propio ranking y sus propias preguntas.
 // Para agregar otro (ej. Mesero), añade una entrada aquí.
+// `roles` son los cargos que se pueden elegir para el empleado (ej. masculino y femenino).
 export const teams = [
-  { id: "ventas", label: "Vendedor", plural: "Vendedores" },
-  { id: "delivery", label: "Repartidor", plural: "Repartidores" },
-  { id: "seguridad", label: "Seguridad", plural: "Seguridad" },
+  { id: "ventas", label: "Vendedor", plural: "Vendedores", roles: ["Vendedor", "Vendedora"] },
+  { id: "delivery", label: "Repartidor", plural: "Repartidores", roles: ["Repartidor", "Repartidora"] },
+  { id: "seguridad", label: "Seguridad", plural: "Seguridad", roles: ["Seguridad"] },
 ];
 
 export const DEFAULT_TEAM = "ventas";
@@ -124,4 +125,10 @@ export function getTeamId(item) {
 
 export function getTeam(teamId) {
   return teams.find((team) => team.id === teamId) ?? teams[0];
+}
+
+// Devuelve el cargo tal como aparece en la lista del tipo; si no coincide, el primero.
+export function getRoleOption(teamId, role) {
+  const { roles } = getTeam(teamId);
+  return roles.find((option) => option.toLowerCase() === (role ?? "").trim().toLowerCase()) ?? roles[0];
 }
